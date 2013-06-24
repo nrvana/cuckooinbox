@@ -1,4 +1,4 @@
-# cuckooinbox plugin by brian marks - eternalnrvana@gmail.com
+# cuckooinbox add-on by brian marks - eternalnrvana@gmail.com
 
 # dependencies
 * IMAPClient (because imaplib is a pain in the ass)
