@@ -1,0 +1,10 @@
+{% extends "base-email-item.html" %}
+{% block content %}
+    {% if results.info.category == "file" %}
+        {% include "sections/file.html" %}
+    {% elif results.info.category == "url" %}
+        {% include "sections/url.html" %}
+    {% endif %}
+    {% include "sections/signatures.html" %}
+    {% include "sections/network-brief.html" %}
+{% endblock %}
