@@ -1,0 +1,17 @@
+# cuckooinbox plugin by brian marks - eternalnrvana@gmail.com
+
+# dependencies
+* IMAPClient (because imaplib is a pain in the ass)
+* bs4 (beautiful soup for html parsing)
+
+# install
+0. untar in $cuckooroot
+1. edit config file
+2. run setup.sh (for custom email reports)
+3. if you want to save a copy of each request, create a
+   folder named 'archive' in the cuckooinbox email account
+
+# use
+* run cuckooinbox along with cuckoosandbox
+* send attachments and urls to your cuckooinbox
+* cc someone to have them receive a copy of the report as well
