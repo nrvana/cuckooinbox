@@ -5,7 +5,7 @@
 * bs4 (beautiful soup for html parsing)
 
 # install
-0. untar in $cuckooroot
+0. place in $cuckooroot
 1. edit config file
 2. run setup.sh (for custom email reports)
 3. if you want to save a copy of each request, create a
