@@ -160,7 +160,7 @@ class CuckooRequest(object):
                 if item in url['href'].split('.'[0])[-1]: return 0
             else:
                 self.response_urls.append(url['href'])
-		if self.machine:
+                if self.machine:
                     task_id = self.db.add_url(url['href'], package="ie", timeout=15, machine=self.machine)
                 else: task_id = self.db.add_url(url['href'], package="ie", timeout=15)
                 if task_id:
@@ -260,11 +260,11 @@ class CuckooRequest(object):
 
         '''attach cuckooinbox email body'''
         for id in self.taskids:
-	    '''wait for reports to finish before sending'''
-	    timeout = time.time() + 120
+            '''wait for reports to finish before sending'''
+            timeout = time.time() + 120
             while time.time() < timeout:
                 if os.path.exists(os.path.join(CUCKOO_ROOT,"storage","analyses",str(id),"reports","report.html")): continue
-            	time.sleep(.25)
+                time.sleep(.25)
             if os.path.exists(os.path.join(CUCKOO_ROOT,"storage","analyses",str(id),"reports","inbox.html")):
                 file = open(os.path.join(CUCKOO_ROOT,"storage","analyses",str(id),"reports","inbox.html"))
                 body = '<html>' + \
@@ -283,11 +283,11 @@ class CuckooRequest(object):
         self.zipResults()
         
         '''send the message'''
-	if '@gmail.com' in self.username:
-	    smtp = smtplib.SMTP('smtp.gmail.com',587)
-	    smtp.starttls()
-	    smtp.login(self.username, self.passwd)
-	else:
+        if '@gmail.com' in self.username:
+            smtp = smtplib.SMTP('smtp.gmail.com',587)
+            smtp.starttls()
+            smtp.login(self.username, self.passwd)
+        else:
             smtp = smtplib.SMTP(self.smtp_server)
             try: smtp.login(self.username,self.passwd)
             except:
@@ -357,22 +357,28 @@ def main():
     
     '''define imap connection'''
     server = IMAPClient(imap, use_uid=True, ssl=imap_ssl)
-    
+
     '''connect, login'''
     server.login(username, passwd)
-
+    
     while True:
-        '''set retrieve folder'''
-        select_info = server.select_folder('INBOX')
-        '''search for new message from email whitelist'''
-        for account in email_whitelist.split(','):
-            messages = server.search('UNSEEN FROM "%s"' % account)
-            '''analyze emails from one account at a time'''
-            if messages:
-                for message in messages:
-                    thread = threading.Thread( target = analyze, args = (message,))
-                    thread.start()
-        time.sleep(interval)
+        try:
+            '''set retrieve folder'''
+            select_info = server.select_folder('INBOX')
+            '''search for new message from email whitelist'''
+            for account in email_whitelist.split(','):
+                messages = server.search('UNSEEN FROM "%s"' % account)
+                '''analyze emails from one account at a time'''
+                if messages:
+                    for message in messages:
+                        thread = threading.Thread( target = analyze, args = (message,))
+                        thread.start()
+            time.sleep(interval)
+        except:
+            '''reconnect to mail account'''
+            server = IMAPClient(imap, use_uid=True, ssl=imap_ssl)
+            server.login(username, passwd)
+            pass
         
 if __name__ == "__main__":
     main()
