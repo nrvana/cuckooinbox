@@ -41,6 +41,7 @@ from lib.cuckoo.common.objects import File
 class CuckooRequest(object):
 
     def __init__(self, message):
+
         self.message = message
         
         '''cuckooinbox config variables'''
@@ -52,7 +53,6 @@ class CuckooRequest(object):
         self.imap_ssl = config['imap_ssl']
         self.smtp_server = config['smtp']
         self.interval = config['interval']
-        self.archive_folder = config['archive_folder']
         self.email_whitelist = config['email_whitelist']
         self.url_limit = config['url_limit']
         self.attachment_limit = config['attachment_limit'] 
@@ -83,7 +83,8 @@ class CuckooRequest(object):
         self.taskids = []
         self.db  = Database()
         self.url_counter = 0 # tracks url count to not exceed url_limit
-    
+   
+ 
     def fetch(self, message):
         
         '''set retrieve folder'''
@@ -113,14 +114,17 @@ class CuckooRequest(object):
             
             '''parse message elements'''
             for part in self.msg.walk():
+
                 if part.get_content_type() == 'text/plain':
                     self.log_entry.logEvent( '[*] Email ID: %d has a plain text object.' % msgid)
                     content = part.get_payload()
-                    self.processText(content)
+                    self.processPlainText(content)
+
                 elif part.get_content_type() == 'text/html':
                     self.log_entry.logEvent('[*] Email ID: %d has a html object.' % msgid)
                     content = part.get_payload()
                     self.processText(content)
+
                 elif 'application' in part.get_content_type():
                     # email attachment has no filename
                     if not part.get_param('name'): return 0
@@ -134,83 +138,91 @@ class CuckooRequest(object):
                     file_name = part.get_param('name')
                     self.processAttachment(content, file_name)
                     
-            '''archive email when done submitting cuckoo tasks'''
-            try:
-                self.archive(self.message)
-            except:
-                self.server.delete_messages(self.message)
-                self.server.expunge()
 
+    def processPlainText(self, content):
+
+	url_list = re.findall('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', content)
+
+	for url in url_list:
+
+            # strip blacklist links and filetypes
+	    if url in self.url_blacklist.split(','): return 0
+	    if url in self.url_file_backlist.split(','): return 0
+
+            self.response_urls.append(url)
+
+            if self.machine:
+                task_id = self.db.add_url(url, package="ie", timeout=15, machine=self.machine)
+            else: task_id = self.db.add_url(url, package="ie", timeout=15)
+            if task_id:
+                self.taskids.append(task_id)
+                self.log_entry.logEvent('[+] URL \"%s\" added as task with ID %d' % (url, task_id))
+                # increment counter and exit loop if limit is reached
+                self.url_counter += 1
+                if (self.url_limit != 0 and self.url_counter == self.url_limit): return 0
+            else:
+                self.log_entry.logEvent("[!] Error: adding task to database" % (url, task_id))
+                break	
+
+		
     def processText(self, content):
-        
+
         '''reformat quoted string mail to plain html'''
         body = quopri.decodestring(content)
         soup = BeautifulSoup(body)
         # todo analyze href spoof
-        
+	
         '''parse and analyze hyperlinks'''
         for url in soup.findAll('a'):
             # strip mailto links
             if url['href'].split(':'[0])[0] == 'mailto' : continue
-            # strip blacklist links
-            for item in self.url_blacklist.split(','):
-                if item in url['href']: return 0
-            # strip blacklist link filetypes
-            for item in self.url_file_backlist.split(','):
-                if item in url['href'].split('.'[0])[-1]: return 0
+	    url = url['href'] 
+
+            # strip blacklist links and filetypes
+	    if url in self.url_blacklist.split(','): return 0 
+	    if url in self.url_file_backlist.split(','): return 0
+
             else:
-                self.response_urls.append(url['href'])
+                self.response_urls.append(url)
                 if self.machine:
-                    task_id = self.db.add_url(url['href'], package="ie", timeout=15, machine=self.machine)
-                else: task_id = self.db.add_url(url['href'], package="ie", timeout=15)
+                    task_id = self.db.add_url(url, package="ie", timeout=15, machine=self.machine)
+                else: task_id = self.db.add_url(url, package="ie", timeout=15)
                 if task_id:
                     self.taskids.append(task_id)
-                    self.log_entry.logEvent('[+] URL \"%s\" added as task with ID %d' % (url['href'],task_id))
+                    self.log_entry.logEvent('[+] URL \"%s\" added as task with ID %d' % (url, task_id))
                     # increment counter and exit loop if limit is reached
                     self.url_counter += 1
                     if (self.url_limit != 0 and self.url_counter == self.url_limit): return 0
                 else:
-                    self.log_entry.logEvent("[!] Error: adding task to database" % (url['href'],task_id))
+                    self.log_entry.logEvent("[!] Error: adding task to database" % (url, task_id))
                     break
 
+
     def processAttachment(self, content, filename):
+
         '''create temp file for analysis'''
         temp_file = tempfile.NamedTemporaryFile(prefix=filename.split('.'[0])[0], suffix='.' + filename.split('.'[0])[1])
         temp_file.write(content)
-        self.response_attachments.append(filename)
-        
+
         '''add to cuckoo tasks'''
         task_id = self.db.add_path(temp_file.name, timeout=10, package=filename.split('.'[0])[1])
-        temp_file.flush()
         if task_id:
             self.taskids.append(task_id)
             self.log_entry.logEvent('[+] File \"%s\" added as task with ID %d' % (filename,task_id))
         else:
             self.taskids.append(task_id)
             self.log_entry.logEvent("[!] Error adding task to database")
+	    return 0
             
         '''make sure file gets submitted before we toss it'''
         timeout = time.time() + 120
         while time.time() < timeout:
             if os.path.exists(os.path.join(CUCKOO_ROOT,"storage","analyses",str(task_id),"reports","report.html")): continue
             time.sleep(.25)
+
+	self.response_attachments.append(filename)
+	temp_file.flush()
         temp_file.close()
-
-
-    def archive(self, message):
-
-        select_info = self.server.select_folder('INBOX')
-        '''cleanup mailbox'''
-        self.server.copy(self.message,self.archive_folder)
-        self.server.delete_messages(self.message)
-        self.server.expunge()
-        
-    def expunge(self, message):
-
-        select_info = self.server.select_folder('INBOX')
-        '''expunge cuckooinbox request'''
-        self.server.delete_messages(self.message)
-        self.server.expunge()
 
 
     def zipResults(self,):
@@ -246,6 +258,7 @@ class CuckooRequest(object):
         Encoders.encode_base64(email_file)
         email_file.add_header('Content-Disposition', 'attachment; filename="report.zip"')
         self.response_msg.attach(email_file)
+
 
     def sendReport(self,):
 
@@ -323,7 +336,7 @@ class Logger(object):
         smtp.login(username,passwd)
         smtp.sendmail(username, sender, body)
         smtp.close()
-        
+
 
 def main():
         
@@ -349,7 +362,7 @@ def main():
     welcome_message = '           _,\n         ((\')\n        /\'--)\n        | _.\'\n       / |`=\n      \'^\''
     print welcome_message
 
-            
+    '''thread main function'''        
     def analyze(message):
         request = CuckooRequest(message)
         request.fetch(message)
@@ -357,10 +370,10 @@ def main():
     
     '''define imap connection'''
     server = IMAPClient(imap, use_uid=True, ssl=imap_ssl)
-
+    
     '''connect, login'''
     server.login(username, passwd)
-    
+   
     while True:
         try:
             '''set retrieve folder'''
@@ -372,6 +385,7 @@ def main():
                 if messages:
                     for message in messages:
                         thread = threading.Thread( target = analyze, args = (message,))
+			thread.daemon = True
                         thread.start()
             time.sleep(interval)
         except:
